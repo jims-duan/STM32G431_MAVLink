@@ -1,0 +1,33 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "cortex-debug",
+            "request": "launch",
+            "name": "Debug (OpenOCD)",
+            "servertype": "openocd",
+            "cwd": "${workspaceRoot}",
+            "executable": "/home/ggg/CubeMX/STM32G431_MAVLink/build/Debug/G431_MAVLink.elf",
+            "configFiles": [
+                "interface/cmsis-dap.cfg",
+                // "interface/stlink.cfg",
+                "target/stm32g4x.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "adapter speed 24000"
+            ],
+            "rtos": "FreeRTOS",                    // 指定RTOS类型
+            "rtosVerbose": true,                    // 启用详细输出
+            "liveWatch": {                          
+                "enabled": true,
+                "samplesPerSecond": 10
+            },
+            "postLaunchCommands": [                  // 只保留这一个
+                "monitor reset halt",                // reset和halt合并
+                "load",
+                // "break main",
+                "continue"
+            ]
+        }
+    ]
+}

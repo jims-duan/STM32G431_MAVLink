@@ -1,0 +1,34 @@
+cmake -DCMAKE_TOOLCHAIN_FILE=../cmake/gcc-arm-none-eabi.cmake ..
+make
+
+openocd -f interface/stlink.cfg -f target/stm32g4x.cfg
+
+telnet localhost 4444
+reset halt
+stm32g4x lock 0
+flash probe 0
+flash erase_sector 0 0 last
+flash write_image erase /home/ggg/CubeMX/G431_MAVLink/build/G431_MAVLink.elf
+reset run
+exit
+
+roslaunch mavros px4.launch fcu_url:=/dev/ttyACM0:115200
+
+/mavros/state
+/mavros/timesync_status
+/diagnostics
+
+/mavros/setpoint_raw/local  控制目标值
+/mavros/local_position/pose 无人机当前值
+
+xy:
+usmart_xy_p_pid("2.0","0.0","0.0")
+
+usmart_xy_s_pid("180.0","0.2","600.0")
+usmart_xy_s_pid("200.0","0.5","200.0")
+usmart_xy_s_pid("240.0","0.17","1380.0")
+
+z:
+usmart_z_p_pid("2.0","0.0","0.0")
+
+usmart_z_s_pid("320.0","0.0","0.0")
