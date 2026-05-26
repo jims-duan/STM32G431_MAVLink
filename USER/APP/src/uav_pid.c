@@ -18,13 +18,25 @@ static float fast_normalize_angle(float angle)
 // 初始化PID控制器参数
 void uav_pid_init(void)
 {
-    pid_init(&huav_pid.PositionPID[0], PID_XY_POSITION_P, PID_XY_POSITION_I, PID_XY_POSITION_D);
-    pid_init(&huav_pid.PositionPID[1], PID_XY_POSITION_P, PID_XY_POSITION_I, PID_XY_POSITION_D);
-    pid_init(&huav_pid.SpeedPID[0], PID_XY_VELOCITY_P, PID_XY_VELOCITY_I, PID_XY_VELOCITY_D);
-    pid_init(&huav_pid.SpeedPID[1], PID_XY_VELOCITY_P, PID_XY_VELOCITY_I, PID_XY_VELOCITY_D);
+    pid_init(&huav_pid.PositionPID[0], PID_XY_POSITION_P, 
+        PID_XY_POSITION_I, 
+        PID_XY_POSITION_D);
+    pid_init(&huav_pid.PositionPID[1], PID_XY_POSITION_P, 
+        PID_XY_POSITION_I, 
+        PID_XY_POSITION_D);
+    pid_init(&huav_pid.SpeedPID[0], PID_XY_VELOCITY_P * PID_XY_VEL_P_K, 
+        PID_XY_VELOCITY_I * PID_XY_VEL_I_K, 
+        PID_XY_VELOCITY_D * PID_XY_VEL_D_K);
+    pid_init(&huav_pid.SpeedPID[1], PID_XY_VELOCITY_P * PID_XY_VEL_P_K, 
+        PID_XY_VELOCITY_I * PID_XY_VEL_I_K, 
+        PID_XY_VELOCITY_D * PID_XY_VEL_D_K);
 
-    pid_init(&huav_pid.PositionPID[2], PID_Z_POSITION_P, PID_Z_POSITION_I, PID_Z_POSITION_D);
-    pid_init(&huav_pid.SpeedPID[2], PID_Z_VELOCITY_P, PID_Z_VELOCITY_I, PID_Z_VELOCITY_D);
+    pid_init(&huav_pid.PositionPID[2], PID_Z_POSITION_P * PID_Z_POS_P_K, 
+        PID_Z_POSITION_I, 
+        PID_Z_POSITION_D);
+    pid_init(&huav_pid.SpeedPID[2], PID_Z_VELOCITY_P, 
+        PID_Z_VELOCITY_I, 
+        PID_Z_VELOCITY_D);
 }
 
 // 定时器更新(5ms,200Hz)，更新PID控制器
@@ -44,7 +56,6 @@ void uav_pid_update(void)
     huav_pid.PositionFeedback[2] = mavlink_struct.odom_position_z;
     huav_pid.SpeedFeedback[0]    = mavlink_struct.odom_velocity_x;
     huav_pid.SpeedFeedback[1]    = mavlink_struct.odom_velocity_y;
-    huav_pid.SpeedFeedback[2]    = mavlink_struct.odom_velocity_z;
 
     if(++pos_counter >= 2) // 100Hz
     {
@@ -59,17 +70,12 @@ void uav_pid_update(void)
         if(huav_pid.PositionOutput[0] <= -1.5f) huav_pid.PositionOutput[0] = -1.5f;
         if(huav_pid.PositionOutput[1] >=  1.5f) huav_pid.PositionOutput[1] =  1.5f;
         if(huav_pid.PositionOutput[1] <= -1.5f) huav_pid.PositionOutput[1] = -1.5f;
-        // if(huav_pid.PositionOutput[2] >=  1.5f) huav_pid.PositionOutput[2] =  1.5f;
-        // if(huav_pid.PositionOutput[2] <= -1.5f) huav_pid.PositionOutput[2] = -1.5f;
     
         huav_pid.SpeedPID[0].SetPoint = huav_pid.PositionOutput[0];    // 期望速度X
         huav_pid.SpeedPID[1].SetPoint = huav_pid.PositionOutput[1];    // 期望速度Y
-        huav_pid.SpeedPID[2].SetPoint = huav_pid.PositionOutput[2];    // 期望速度Z
         pos_counter = 0;
     }
     
-    // huav_pid.SpeedPID[0].SetPoint = 0.4;
-    huav_pid.SpeedPID[2].SetPoint = 0.4;
     // 速度环计算
     float sx_out = positional_pid_ctrl(&huav_pid.SpeedPID[0], huav_pid.SpeedFeedback[0], 200.0f, 0.5f);
     // 输出限幅，防止过大的控制信号
@@ -81,57 +87,46 @@ void uav_pid_update(void)
     if(sy_out >=  200.0f) sy_out =  200.0f;
     if(sy_out <= -200.0f) sy_out = -200.0f;
 
-    float sz_out = positional_pid_ctrl(&huav_pid.SpeedPID[2], huav_pid.SpeedFeedback[2], 200.0f, 0.5f);
-    // 输出限幅，防止过大的控制信号
-    if(sz_out >=  200.0f) sz_out =  200.0f;
-    if(sz_out <= -200.0f) sz_out = -200.0f;
-
     float Fx=0,Fy=0;
     float cos_cw = arm_cos_f32(cw);
     float sin_cw = arm_sin_f32(cw);
     Fx = cos_cw * sx_out - sin_cw * sy_out;
     Fy = cos_cw * sy_out + sin_cw * sx_out;
 
-    // // 最终赋值
-    // huav_pid.SpeedOutput[0] = Fx;
-    // huav_pid.SpeedOutput[1] = Fy;
-    // huav_pid.SpeedOutput[2] = sz_out;
-
     // 最终赋值
     huav_pid.SpeedOutput[0] = Fx;
     huav_pid.SpeedOutput[1] = Fy;
     huav_pid.SpeedOutput[2] = huav_pid.PositionOutput[2];
+    // 高度使用简单位置控制
     if(huav_pid.SpeedOutput[2] > 0)
     {
-        if (huav_pid.SpeedOutput[2] < 60.0f)
+        if (huav_pid.SpeedOutput[2] < SPEED_MIN_LIMIT)
         {
-            huav_pid.SpeedOutput[2] = 60.0f;
+            huav_pid.SpeedOutput[2] = SPEED_MIN_LIMIT;
         }
     }
     else if(huav_pid.SpeedOutput[2] < 0)
     {
-        if (huav_pid.SpeedOutput[2] > -60.0f)
+        if (huav_pid.SpeedOutput[2] > -SPEED_MIN_LIMIT)
         {
-            huav_pid.SpeedOutput[2] = -60.0f;
+            huav_pid.SpeedOutput[2] = -SPEED_MIN_LIMIT;
         }
     }
 
-    float YAW = mavlink_struct.set_yaw_rad;
     // 简单控制Yaw
-    double error = -YAW - mavlink_struct.odom_yaw_rad;
+    float error = -mavlink_struct.set_yaw_rad - mavlink_struct.odom_yaw_rad;
     // 归一化误差到[-pi, pi]
-    while (error > M_PI) error -= 2.0 * M_PI;
-    while (error < -M_PI) error += 2.0 * M_PI;
-
+    error = fmodf(error, 2.0 * M_PI);        // 结果范围 (-2π, 2π)
+    if (error > M_PI) error -= 2.0 * M_PI;
+    if (error < -M_PI) error += 2.0 * M_PI; // 处理边缘情况
     // 添加2.5、5、10度（分别为约0.0436、0.0873、0.1745弧度）的判断
-    const double threshold_2p5 = 1.5 * M_PI / 180.0;
-    const double threshold_5 = 5.0 * M_PI / 180.0;
-    const double threshold_10 = 20.0 * M_PI / 180.0;
+    const float threshold_2p5 = 1.5 * M_PI / 180.0;
+    const float threshold_5 = 5.0 * M_PI / 180.0;
+    const float threshold_10 = 20.0 * M_PI / 180.0;
     int16_t temp = 0;
-
     if (error >= -threshold_2p5 && error <= threshold_2p5)
     {
-        temp = 40;
+        temp = 0;
     }
     else if (error > threshold_2p5 && error <= threshold_5)
     {
@@ -153,7 +148,7 @@ void uav_pid_update(void)
     {
         temp = 445;
     }
-    else // error < -threshold_10
+    else if (error < -threshold_10)
     {
         temp = -445;
     }

@@ -33,6 +33,7 @@ typedef struct
     uint32_t blink_off_time;    // 闪烁熄灭时间(ms)
     LED_Structure* led_struct;   // led操作对象指针
 } LED_FSM_Structure;
+extern LED_FSM_Structure led_fsm; // 定义LED状态机结构体
 
 /*LED状态机初始化*/
 LED_FSM_Structure LED_FSM_Init(LED_Structure* led_struct);

@@ -74,13 +74,7 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-LED_Structure led;  // 定义led结构体
-LED_FSM_Structure led_fsm; // 定义LED状态机结构体
 
-void set_led_blink(uint32_t on_time, uint32_t off_time)
-{
-    LED_FSM_SetBlinkEvent(&led_fsm, on_time, off_time);
-}
 /* USER CODE END 0 */
 
 /**

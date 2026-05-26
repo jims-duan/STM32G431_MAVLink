@@ -1,5 +1,6 @@
 #include "led.h"
 
+LED_Structure led;  // 定义led结构体
 
 /*初始化LED*/
 LED_Structure LED_Init(GPIO_TypeDef* gpio, uint16_t pin, LED_POLARITY polarity)

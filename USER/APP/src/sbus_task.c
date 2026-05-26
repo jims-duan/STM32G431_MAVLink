@@ -2,6 +2,8 @@
 #include "ring_buffer.h"
 #include "usbd_cdc_if.h"
 #include "uav_pid.h"
+#include "led_fsm.h"
+#include "usart_it.h"
 
 uint8_t encode_frame[SBUS_FRAME_SIZE];
 
@@ -45,23 +47,52 @@ void SBUS_ParseTask(void)
                 return;
             }
 
-            if (sbus_frame.channels[7] > 1500)  // A通道打开
+            
+
+            if (
+                ((sbus_frame.channels[0] > SBUS_NEUTRAL + SBUS_DEADZONE || 
+                sbus_frame.channels[0] < SBUS_NEUTRAL - SBUS_DEADZONE) ||     // 通道0: 横滚
+                (sbus_frame.channels[1] > SBUS_NEUTRAL + SBUS_DEADZONE || 
+                sbus_frame.channels[1] < SBUS_NEUTRAL - SBUS_DEADZONE) ||     // 通道1: 俯仰
+                (sbus_frame.channels[2] > SBUS_NEUTRAL + SBUS_DEADZONE || 
+                sbus_frame.channels[2] < SBUS_NEUTRAL - SBUS_DEADZONE) ||     // 通道2: 油门
+                (sbus_frame.channels[3] > SBUS_NEUTRAL + SBUS_DEADZONE || 
+                sbus_frame.channels[3] < SBUS_NEUTRAL - SBUS_DEADZONE))           // 通道3: 偏航
+            )
             {
-                sbus_rc_struct.event = SBUS_RC_EVENT_A_CH8;
+                sbus_rc_struct.event = SBUS_RC_EVENT_MANUAL_CTRL;   // 遥控接管
+            }
+            else if (
+                ((sbus_frame.channels[0] < SBUS_NEUTRAL + SBUS_DEADZONE && 
+                sbus_frame.channels[0] > SBUS_NEUTRAL - SBUS_DEADZONE) &&
+                (sbus_frame.channels[1] < SBUS_NEUTRAL + SBUS_DEADZONE && 
+                sbus_frame.channels[1] > SBUS_NEUTRAL - SBUS_DEADZONE) &&
+                (sbus_frame.channels[2] < SBUS_NEUTRAL + SBUS_DEADZONE && 
+                sbus_frame.channels[2] > SBUS_NEUTRAL - SBUS_DEADZONE) &&
+                (sbus_frame.channels[3] < SBUS_NEUTRAL + SBUS_DEADZONE && 
+                sbus_frame.channels[3] > SBUS_NEUTRAL - SBUS_DEADZONE)) && 
+                sbus_frame.channels[9] == 1946  // B按钮打开自动控制
+            )
+            {
+                sbus_rc_struct.event = SBUS_RC_EVENT_AUTO_CTRL;  // 自动控制
             }
             else
             {
-                sbus_rc_struct.event = SBUS_RC_EVENT_NOT;
+                sbus_rc_struct.event = SBUS_RC_EVENT_NOT;   // 无事件
             }
+
+            sbus_encode_frame_t = sbus_frame;  // 直接复制原始通道数据，后续根据事件类型进行调整
             // 读取各通道值（范围约172-1811）
             switch(sbus_rc_struct.event)
             {
-                case(SBUS_RC_EVENT_A_CH8):  // A通道打开
+                case(SBUS_RC_EVENT_MANUAL_CTRL):  // 手动控制
                 {
-                    // sbus_encode_frame_t.channels[0]  = sbus_frame.channels[0];
-                    // sbus_encode_frame_t.channels[1]  = sbus_frame.channels[1];
-                    // sbus_encode_frame_t.channels[2]  = sbus_frame.channels[2];
+                    // 不进行任何修改，直接使用遥控输入的通道值
+                }
+                break;
 
+                case(SBUS_RC_EVENT_AUTO_CTRL):  // 自动控制
+                {
                     sbus_encode_frame_t.channels[0] = sbus_frame.channels[0] + huav_pid.SpeedOutput[0];
                     sbus_encode_frame_t.channels[1] = sbus_frame.channels[1] - huav_pid.SpeedOutput[1];
                     sbus_encode_frame_t.channels[2] = sbus_frame.channels[2] + huav_pid.SpeedOutput[2];
@@ -72,26 +103,10 @@ void SBUS_ParseTask(void)
 
                 default:
                 {
-                    sbus_encode_frame_t.channels[0]  = sbus_frame.channels[0];  // 横滚/副翼
-                    sbus_encode_frame_t.channels[1]  = sbus_frame.channels[1];  // 俯仰/升降
-                    sbus_encode_frame_t.channels[2]  = sbus_frame.channels[2];  // 油门
-                    sbus_encode_frame_t.channels[3]  = sbus_frame.channels[3];  // 偏航/方向舵
+                    // 不进行任何修改，直接使用遥控输入的通道值
                 }
                 break;
             }
-            sbus_encode_frame_t.channels[4]  = sbus_frame.channels[4];  // 辅助通道1
-            sbus_encode_frame_t.channels[5]  = sbus_frame.channels[5];  // 辅助通道2
-            sbus_encode_frame_t.channels[6]  = sbus_frame.channels[6];  // 辅助通道3
-            sbus_encode_frame_t.channels[7]  = sbus_frame.channels[7];  // 辅助通道4
-            sbus_encode_frame_t.channels[8]  = sbus_frame.channels[8];  // 辅助通道5
-            sbus_encode_frame_t.channels[9]  = sbus_frame.channels[9];  // 辅助通道6
-            sbus_encode_frame_t.channels[10] = sbus_frame.channels[10]; // 辅助通道7
-            sbus_encode_frame_t.channels[11] = sbus_frame.channels[11]; // 辅助通道8
-            sbus_encode_frame_t.channels[12] = sbus_frame.channels[12]; // 辅助通道9
-            sbus_encode_frame_t.channels[13] = sbus_frame.channels[13]; // 辅助通道10
-            sbus_encode_frame_t.channels[14] = sbus_frame.channels[14]; // 辅助通道11
-            sbus_encode_frame_t.channels[15] = sbus_frame.channels[15]; // 辅助通道12
-
             // 合成SBUS帧
             sbus_encode_frame(&sbus_encode_frame_t,encode_frame);
         }
@@ -101,7 +116,11 @@ void SBUS_ParseTask(void)
 // 发送SBUS信号
 void SendSBUS()
 {
-    HAL_UART_Transmit_DMA(&huart3, encode_frame, 25);
+    if (USART3_Struct.TxCompleteFlag == 1)
+    {
+        USART3_Struct.TxCompleteFlag = 0;
+        HAL_UART_Transmit_DMA(&huart3, encode_frame, 25);
+    }
 }
 
 

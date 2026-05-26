@@ -32,6 +32,7 @@ typedef struct
     uint16_t GPIO_Pin;          // LED引脚
     LED_POLARITY polarity;      // LED极性
 } LED_Structure;
+extern LED_Structure led;  // 定义led结构体
 
 /*初始化LED*/
 LED_Structure LED_Init(GPIO_TypeDef* gpio, uint16_t pin, LED_POLARITY polarity);

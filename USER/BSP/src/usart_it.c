@@ -41,6 +41,10 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
   {
     USART1_Struct.TxCompleteFlag = 1;
   }
+  else if (huart == &huart3)
+  {
+    USART3_Struct.TxCompleteFlag = 1;
+  }
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)

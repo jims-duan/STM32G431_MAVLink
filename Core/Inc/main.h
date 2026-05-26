@@ -54,8 +54,6 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-void set_led_blink(uint32_t on_time, uint32_t off_time);
-
 #define __FILENAME__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define debug_printf(...)  _debug_printf(__FILENAME__, __LINE__, __VA_ARGS__)
 void _debug_printf(const char *file, int line, const char *format, ...);

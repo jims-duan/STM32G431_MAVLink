@@ -28,6 +28,7 @@ typedef struct {
 
 const param_entry_t params[] = {
     {"SYS_AUTOSTART", 4001.0f},
+    {"SYS_AUTOCONFIG", 0.0f},
     {"CAL_GYRO0_ID", 0.0f},
     {"COM_RC_IN_MODE", 0.0f},
     {"RC_MAP_ROLL", 0.0f},
@@ -58,7 +59,21 @@ const param_entry_t params[] = {
     {"NAV_DLL_ACT", 1.0f},
     {"COM_RC_LOSS_T", 5.0f},
     {"NAV_RCL_ACT", 1.0f},
-    {"COM_LOW_BAT_ACT", 1.0f}
+    {"COM_LOW_BAT_ACT", 1.0f},
+
+
+    // ========== 位置环 PID 参数 ==========
+    // 水平位置 P 控制器（XY方向）
+    {"MPC_XY_P", PID_XY_POSITION_P},           // P系数，控制位置误差响应强度
+    {"MPC_XY_VEL_P_ACC", PID_XY_VELOCITY_P},       // 速度环P（若有级联结构）
+    {"MPC_XY_VEL_I_ACC", PID_XY_VELOCITY_I},       // 速度环I，消除静差
+    {"MPC_XY_VEL_D_ACC", PID_XY_VELOCITY_D},      // 速度环D，抑制振荡
+
+    // 垂直位置 P 控制器（Z方向）
+    {"MPC_Z_P", PID_Z_POSITION_P},            // 高度环P系数
+    {"MPC_Z_I", PID_Z_POSITION_I},
+    {"MPC_Z_D", PID_Z_POSITION_D},
+
 };
 
 uint16_t param_count = sizeof(params) / sizeof(params[0]);
@@ -152,7 +167,7 @@ void send_rc_channels(void)
         FLIGHT_CONTROLLER_COMP_ID,
         &msg,
         HAL_GetTick(),
-        18,
+        16,
         sbus_encode_frame_t.channels[0],
         sbus_encode_frame_t.channels[1],
         sbus_encode_frame_t.channels[2],
@@ -169,8 +184,8 @@ void send_rc_channels(void)
         sbus_encode_frame_t.channels[13],
         sbus_encode_frame_t.channels[14],
         sbus_encode_frame_t.channels[15],
-        sbus_encode_frame_t.channels[16],
-        sbus_encode_frame_t.channels[17],
+        0,
+        0,
         66
     );
     
@@ -530,6 +545,44 @@ void Handle_MAVLink_Message(mavlink_message_t *msg)
             mavlink_struct.set_position_z = pos_target.z; // 期望位置Z
             
             mavlink_struct.set_yaw_rad    = (pos_target.yaw - (M_PI / 2.0));
+        }
+        break;
+
+        case MAVLINK_MSG_ID_PARAM_SET:  // ID = 23
+        {
+            mavlink_param_set_t param_set;
+            mavlink_msg_param_set_decode(msg, &param_set);
+            
+            // 检查目标系统
+            if (param_set.target_system != 0 && param_set.target_system != FLIGHT_CONTROLLER_SYS_ID)
+            {
+                debug_printf("【参数设置】目标系统不匹配，忽略\r\n");
+                break;
+            }
+            
+            // 查找并更新参数
+            uint8_t param_found = 0;
+            for (uint16_t i = 0; i < param_count; i++)
+            {
+                if (strcmp(params[i].name, param_set.param_id) == 0)
+                {
+                    param_found = 1;
+                    
+                    debug_printf("【参数设置】%s : %.3f -> %.3f\r\n", 
+                                param_set.param_id, 
+                                params[i].value, 
+                                param_set.param_value);
+                    
+                    // ((param_entry_t*)params)[i].value = param_set.param_value;
+                    send_param_value(param_set.param_id, param_set.param_value, i);
+                    break;
+                }
+            }
+            
+            if (!param_found)
+            {
+                debug_printf("【参数设置】警告：未找到参数 %s\r\n", param_set.param_id);
+            }
         }
         break;
 
