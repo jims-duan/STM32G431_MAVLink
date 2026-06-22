@@ -76,7 +76,19 @@ void HAL_PCD_MspInit(PCD_HandleTypeDef* pcdHandle)
   if(pcdHandle->Instance==USB)
   {
   /* USER CODE BEGIN USB_MspInit 0 */
-  
+  __HAL_RCC_GPIOA_CLK_ENABLE();                   // 使能GPIOA端口
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  GPIO_InitStruct.Pin = GPIO_PIN_12;              // 引脚PA12, 即D+
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;     // 引脚工作模式
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;           // 下拉
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;    // 引脚反转速度
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);         // 初始化
+
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_RESET);                                            
+  HAL_Delay(5);
+  //先把PA12拉低再拉高，利用D+模拟USB的拔插动作   
+  HAL_GPIO_WritePin(GPIOA,GPIO_PIN_12, GPIO_PIN_SET);
+  HAL_Delay(5);
   /* USER CODE END USB_MspInit 0 */
 
   /** Initializes the peripherals clocks

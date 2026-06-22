@@ -34,6 +34,14 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
   }
 }
 
+void HAL_UART_TxHalfCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart == &huart3)
+  {
+    USART3_Struct.TxCompleteFlag = 1;
+  }
+}
+
 // 串口发送完成回调
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {

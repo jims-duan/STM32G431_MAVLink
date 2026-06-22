@@ -33,6 +33,7 @@ extern "C" {
 /* USER CODE BEGIN Includes */
 #include "config.h"
 #include <string.h>
+#include "MavLinkAPP.h"
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -54,9 +55,28 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-#define __FILENAME__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
-#define debug_printf(...)  _debug_printf(__FILENAME__, __LINE__, __VA_ARGS__)
-void _debug_printf(const char *file, int line, const char *format, ...);
+#define __FILENAME__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : \
+                      strrchr(__FILE__, '\\') ? strrchr(__FILE__, '\\') + 1 : __FILE__)
+#define debug_info(fmt, ...) \
+    do { \
+        mavlink_send_statustext_v(MAV_SEVERITY_INFO, \
+            "[INFO] [%s:%d]: " fmt, \
+            __FILENAME__, __LINE__, ##__VA_ARGS__); \
+    } while(0)
+
+#define debug_warning(fmt, ...) \
+    do { \
+        mavlink_send_statustext_v(MAV_SEVERITY_WARNING, \
+            "[WARN] [%s:%d]: " fmt, \
+            __FILENAME__, __LINE__, ##__VA_ARGS__); \
+    } while(0)
+
+#define debug_error(fmt, ...) \
+    do { \
+        mavlink_send_statustext_v(MAV_SEVERITY_ERROR, \
+            "[ERROR] [%s:%d]: " fmt, \
+            __FILENAME__, __LINE__, ##__VA_ARGS__); \
+    } while(0)
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "crc.h"
 #include "dma.h"
 #include "iwdg.h"
 #include "usart.h"
@@ -85,7 +86,9 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+  SCB->VTOR = 0x08008000;
 
+  __enable_irq();
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -114,6 +117,7 @@ int main(void)
   MX_TIM16_Init();
   MX_USART1_UART_Init();
   MX_IWDG_Init();
+  MX_CRC_Init();
   /* USER CODE BEGIN 2 */
   // 启动定时器6(位姿PID控制定时器)
   HAL_TIM_Base_Start_IT(&htim6);
@@ -139,7 +143,7 @@ int main(void)
   // 初始化LED状态机
   led_fsm = LED_FSM_Init(&led);
   // 初始设置500ms闪烁
-  LED_FSM_SetBlinkEvent(&led_fsm,500,500);
+  LED_FSM_SetBlinkEvent(&led_fsm,500,500,0);
 
   // PID参数初始化
   uav_pid_init();
@@ -164,7 +168,7 @@ int main(void)
       last_mavlink_time = tick;
 
       // 打印系统运行时间
-      // debug_printf("Systemc Running tick: %lu ms\n", tick);
+      // debug_info("Systemc Running tick: %lu ms\n", tick);
     }
 
     // 700ms喂狗
@@ -243,23 +247,7 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-void _debug_printf(const char *file, int line, const char *format, ...)
-{
-  uint8_t usbtemp[256];
-  uint16_t len;
-  
-  // 先添加文件名和行号
-  int header_len = snprintf((char*)usbtemp, sizeof(usbtemp), "[%s:%d] ", file, line);
-  
-  va_list args;
-  va_start(args, format);
-  len = vsnprintf((char*)usbtemp + header_len, sizeof(usbtemp) - header_len, (char*)format, args);
-  va_end(args);
-  
-  len += header_len;
-  
-  HAL_UART_Transmit(&hlpuart1, usbtemp, len, HAL_MAX_DELAY);
-}
+
 /* USER CODE END 4 */
 
 /**

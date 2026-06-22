@@ -24,7 +24,7 @@ void SBUS_ParseTask(void)
             if(!sbus_frame.frame_valid)
             {
 #if SBUS_TASK_DEBUG
-                debug_printf("SBUS帧无效\r\n");
+                debug_info("SBUS帧无效\r\n");
 #endif
                 return;
             }
@@ -33,7 +33,7 @@ void SBUS_ParseTask(void)
             if(sbus_frame.frame_lost)
             {
 #if SBUS_TASK_DEBUG
-                debug_printf("信号丢失\r\n");
+                debug_info("信号丢失\r\n");
 #endif
                 return;
             }
@@ -42,7 +42,7 @@ void SBUS_ParseTask(void)
             if(sbus_frame.failsafe)
             {
 #if SBUS_TASK_DEBUG
-                debug_printf("故障保护\r\n");
+                debug_info("故障保护\r\n");
 #endif
                 return;
             }
@@ -119,7 +119,12 @@ void SendSBUS()
     if (USART3_Struct.TxCompleteFlag == 1)
     {
         USART3_Struct.TxCompleteFlag = 0;
-        HAL_UART_Transmit_DMA(&huart3, encode_frame, 25);
+        HAL_UART_Transmit_IT(&huart3, encode_frame, 25);
+    }
+    else    // 开启优化后导致进不了发送完成中断(概率性)，强制设置发送完成标志位为1以尝试发送下一帧
+    {
+        USART3_Struct.TxCompleteFlag = 1;
+        HAL_UART_Transmit_IT(&huart3, encode_frame, 25);
     }
 }
 

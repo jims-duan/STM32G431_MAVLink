@@ -16,12 +16,14 @@ LED_FSM_Structure LED_FSM_Init(LED_Structure* led_struct)
     fsm.blink_off_time = 0;
     // 操作led指针
     fsm.led_struct = led_struct;
+    fsm.duration = 0;
+    fsm.duration_start_tick = 0;
 
     return fsm;
 }
 
 /*设置led闪烁*/
-void LED_FSM_SetBlinkEvent(LED_FSM_Structure* fsm, uint32_t on_time, uint32_t off_time)
+void LED_FSM_SetBlinkEvent(LED_FSM_Structure* fsm, uint32_t on_time, uint32_t off_time, uint32_t duration)
 {
     fsm->event = LED_FSM_EVENT_BLINK;
     fsm->state = LED_FSM_STATE_COUNT;   // 用来判断第一次进入闪烁
@@ -29,6 +31,21 @@ void LED_FSM_SetBlinkEvent(LED_FSM_Structure* fsm, uint32_t on_time, uint32_t of
     fsm->blink_off_tick = 0;
     fsm->blink_on_time = on_time;
     fsm->blink_off_time = off_time;
+    fsm->duration = duration;
+    fsm->duration_start_tick = 0;
+}
+
+/*重置为默认设置*/
+void LED_FSM_ResetToDefault(LED_FSM_Structure* fsm)
+{
+    fsm->event = LED_FSM_EVENT_BLINK;
+    fsm->state = LED_FSM_STATE_COUNT;   // 用来判断第一次进入闪烁
+    fsm->blink_on_tick = 0;
+    fsm->blink_off_tick = 0;
+    fsm->blink_on_time = 500;
+    fsm->blink_off_time = 500;
+    fsm->duration = 0;
+    fsm->duration_start_tick = 0;
 }
 
 /*关闭led*/
@@ -71,6 +88,15 @@ void LED_FSM_Run(LED_FSM_Structure* fsm, uint32_t tick)
         // 闪烁事件
         case(LED_FSM_EVENT_BLINK):
         {
+            if (fsm->duration > 0 && fsm->duration_start_tick != 0 && get_tick_diff(tick, fsm->duration_start_tick) >= fsm->duration)    // 如果持续时间超过设定值，强制关闭LED
+            {
+                LED_SetState(fsm->led_struct, LED_STATE_OFF);
+                fsm->state = LED_FSM_STATE_OFF;
+                fsm->event = LED_FSM_EVENT_IDLE;    // 结束闪烁
+                LED_FSM_ResetToDefault(fsm);   // 恢复默认闪烁设置
+                break;
+            }
+
             // 首次进入闪烁状态
             if((fsm->state != LED_FSM_STATE_ON) \
             && (fsm->state != LED_FSM_STATE_OFF))
@@ -78,6 +104,8 @@ void LED_FSM_Run(LED_FSM_Structure* fsm, uint32_t tick)
                 LED_SetState(fsm->led_struct, LED_STATE_ON);
                 fsm->blink_on_tick = tick;  // 记录开始亮的时间
                 fsm->state = LED_FSM_STATE_ON;
+
+                fsm->duration_start_tick = tick;   // 记录持续时间开始的时间
             }
             else if(fsm->state == LED_FSM_STATE_OFF)
             {

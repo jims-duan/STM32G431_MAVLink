@@ -8,6 +8,8 @@
 #include "usbd_cdc_if.h"
 #include "usart_it.h"
 #include "LowPassFilter.h"
+#include <stdarg.h>
+#include "led_fsm.h"
 
 
 MAVLINK_Structure mavlink_struct = 
@@ -22,11 +24,11 @@ uint8_t mavlink_buf[MAVLINK_MAX_PACKET_LEN];
 
 // ==================== 参数表 ====================
 typedef struct {
-    const char* name;
-    const float value;
+    char* name;
+    float value;
 } param_entry_t;
 
-const param_entry_t params[] = {
+param_entry_t params[] = {
     {"SYS_AUTOSTART", 4001.0f},
     {"SYS_AUTOCONFIG", 0.0f},
     {"CAL_GYRO0_ID", 0.0f},
@@ -114,6 +116,77 @@ void mavlink_send(uint8_t *buf, uint16_t len)
 {
     // 使用USB发送
     CDC_Transmit_FS(buf, len);
+}
+
+void mavlink_send_statustext_v(uint8_t severity, const char* format, ...)
+{
+    if (format == NULL) return;
+    
+    char full_buf[256];
+    va_list args;
+    
+    // 先格式化完整字符串
+    va_start(args, format);
+    vsnprintf(full_buf, sizeof(full_buf), format, args);
+    va_end(args);
+    full_buf[sizeof(full_buf) - 1] = '\0';
+    
+    int full_len = strlen(full_buf);
+    int max_text_len = MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN - 1;  // 49字节
+    
+    // 如果消息不长，直接发送
+    if (full_len <= max_text_len) {
+        mavlink_message_t msg;
+        mavlink_msg_statustext_pack(
+            FLIGHT_CONTROLLER_SYS_ID,
+            FLIGHT_CONTROLLER_COMP_ID,
+            &msg,
+            severity,
+            full_buf,
+            0, 0
+        );
+        uint16_t len = mavlink_msg_to_send_buffer(mavlink_buf, &msg);
+        mavlink_send(mavlink_buf, len);
+        return;
+    }
+    
+    // 需要分包
+    // 计算分包数量，预留 "[xx/xx]" 的空间（最多8个字符）
+    int header_max_len = 8;
+    int part_content_len = max_text_len - header_max_len;
+    int total_parts = (full_len + part_content_len - 1) / part_content_len;
+    int offset = 0;
+    
+    for (int part = 1; part <= total_parts; part++) {
+        // 计算本次复制的长度
+        int remain = full_len - offset;
+        int copy_len = (remain < part_content_len) ? remain : part_content_len;
+        
+        // 提取片段
+        char content_buf[part_content_len + 1];
+        strncpy(content_buf, full_buf + offset, copy_len);
+        content_buf[copy_len] = '\0';
+        
+        // 组装最终消息
+        char final_buf[MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN];
+        snprintf(final_buf, sizeof(final_buf), "[%d/%d]%s", part, total_parts, content_buf);
+        
+        // 发送
+        mavlink_message_t msg;
+        mavlink_msg_statustext_pack(
+            FLIGHT_CONTROLLER_SYS_ID,
+            FLIGHT_CONTROLLER_COMP_ID,
+            &msg,
+            severity,
+            final_buf,
+            0, 0
+        );
+        
+        uint16_t len = mavlink_msg_to_send_buffer(mavlink_buf, &msg);
+        mavlink_send(mavlink_buf, len);
+        
+        offset += copy_len;
+    }
 }
 
 // 发送心跳消息
@@ -337,7 +410,12 @@ void MavLink_FSM(uint32_t tick)
     MavLinkAPP_Parse(); // 消息解析
 }
 // ==================== MAVLink解析函数 ====================
+#define UPDATE_MAGIC_APP 0xA55AA55A
+// 放入.noinit段，上电不自动清零
+__attribute__((section(".noinit"))) volatile uint32_t g_UpdateFlag;
 
+static uint8_t match_index = 0;
+static const char target[] = "BOOTLOADER RESET\r\n";
 void MavLinkAPP_Parse(void)
 {
     uint8_t byte;
@@ -346,6 +424,32 @@ void MavLinkAPP_Parse(void)
     
     while (RingBuff_ReadByte(&USBRxRingBufferStruct, &byte))
     {
+        if (byte == target[match_index])
+        {
+            match_index++;
+            if (match_index == sizeof(target) - 1)
+            {
+                // 字符全部匹配
+                match_index = 0;
+                // 执行 RESET 命令
+                g_UpdateFlag = UPDATE_MAGIC_APP;
+                __DSB();
+                __ISB();
+                NVIC_SystemReset();
+            }
+        }
+        else
+        {
+            if (byte == target[0])
+            {
+                match_index = 1;  // 当前字节就是 'B'
+            }
+            else
+            {
+                match_index = 0;  // 完全重置
+            }
+        }
+
         uint8_t result = mavlink_parse_char(MAVLINK_COMM_0, byte, &msg, &status);
 
         if (result == MAVLINK_FRAMING_OK)
@@ -428,6 +532,19 @@ void Handle_MAVLink_Message(mavlink_message_t *msg)
                     send_autopilot_version(cmd.target_system, cmd.target_component);
                     send_command_ack(cmd.command, MAV_RESULT_ACCEPTED, 
                                     cmd.target_system, cmd.target_component);
+                }
+                break;
+
+                case(MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN):
+                {
+                    if (cmd.param1 > 0.9f && cmd.param1 < 1.1f) // 重启飞控
+                    {
+                        send_command_ack(cmd.command, MAV_RESULT_ACCEPTED, 
+                                        cmd.target_system, cmd.target_component);
+                        debug_info("收到重启命令，正在重启...");
+                        HAL_Delay(3000);    // 延时触发看门狗重启飞控
+                        NVIC_SystemReset();
+                    }
                 }
                 break;
                 
@@ -548,47 +665,51 @@ void Handle_MAVLink_Message(mavlink_message_t *msg)
         }
         break;
 
-        case MAVLINK_MSG_ID_PARAM_SET:  // ID = 23
+        case MAVLINK_MSG_ID_PARAM_SET:
         {
+            debug_info("收到 PARAM_SET 消息");
             mavlink_param_set_t param_set;
             mavlink_msg_param_set_decode(msg, &param_set);
             
-            // 检查目标系统
-            if (param_set.target_system != 0 && param_set.target_system != FLIGHT_CONTROLLER_SYS_ID)
-            {
-                debug_printf("【参数设置】目标系统不匹配，忽略\r\n");
-                break;
-            }
+            // 确保字符串以null结尾
+            char param_id_safe[17] = {0};
+            strncpy(param_id_safe, param_set.param_id, 16);
             
-            // 查找并更新参数
-            uint8_t param_found = 0;
+            // 使用安全字符串比较
+            int16_t found_index = -1;
             for (uint16_t i = 0; i < param_count; i++)
             {
-                if (strcmp(params[i].name, param_set.param_id) == 0)
+                if (strncmp(params[i].name, param_id_safe, 16) == 0)
                 {
-                    param_found = 1;
-                    
-                    debug_printf("【参数设置】%s : %.3f -> %.3f\r\n", 
-                                param_set.param_id, 
-                                params[i].value, 
-                                param_set.param_value);
-                    
-                    // ((param_entry_t*)params)[i].value = param_set.param_value;
-                    send_param_value(param_set.param_id, param_set.param_value, i);
+                    found_index = i;
                     break;
                 }
             }
             
-            if (!param_found)
+            if (found_index >= 0)
             {
-                debug_printf("【参数设置】警告：未找到参数 %s\r\n", param_set.param_id);
+                float old_value = params[found_index].value;
+                params[found_index].value = param_set.param_value;
+
+                send_param_value(params[found_index].name, params[found_index].value, found_index);
+                LED_FSM_SetBlinkEvent(&led_fsm,30,30,1000);
+                // for (uint16_t i = 0; i < param_count; i++)
+                // {
+                //     send_param_value(params[i].name, params[i].value, i);
+                // }
+
+                debug_info("参数更新: %s 从 %.3f 更新为 %.3f", param_id_safe, old_value, params[found_index].value);
+            }
+            else
+            {
+                debug_info("未找到参数: %s", param_id_safe);
             }
         }
         break;
 
         default:    // 未处理的消息ID
         {
-            
+            debug_warning("收到未知消息ID: %d", msg->msgid);
         }
         break;
     }

@@ -32,6 +32,8 @@ typedef struct
     uint32_t blink_on_time;     // 闪烁常亮时间(ms)
     uint32_t blink_off_time;    // 闪烁熄灭时间(ms)
     LED_Structure* led_struct;   // led操作对象指针
+    uint32_t duration;          // 持续时长(ms) - 当前状态的总持续时间
+    uint32_t duration_start_tick; // 持续时间开始计时的tick
 } LED_FSM_Structure;
 extern LED_FSM_Structure led_fsm; // 定义LED状态机结构体
 
@@ -40,7 +42,7 @@ LED_FSM_Structure LED_FSM_Init(LED_Structure* led_struct);
 /*LED状态机运行处理函数*/
 void LED_FSM_Run(LED_FSM_Structure* fsm, uint32_t tick);
 /*设置led闪烁*/
-void LED_FSM_SetBlinkEvent(LED_FSM_Structure* fsm, uint32_t on_time, uint32_t off_time);
+void LED_FSM_SetBlinkEvent(LED_FSM_Structure* fsm, uint32_t on_time, uint32_t off_time, uint32_t duration);
 /*关闭led*/
 void LED_FSM_SetOFFEvent(LED_FSM_Structure* fsm);
 /*开启led*/

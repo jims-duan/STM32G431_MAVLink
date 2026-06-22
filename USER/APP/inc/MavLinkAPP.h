@@ -30,6 +30,7 @@ void MavLink_Init();
 
 void send_heartbeat(void);
 void send_rc_channels(void);
+void mavlink_send_statustext_v(uint8_t severity, const char* format, ...);
 
 void MavLink_FSM(uint32_t tick);
 void MavLinkAPP_Parse(void);
