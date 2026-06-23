@@ -57,7 +57,7 @@ MEMORY
 {
 RAM (xrw)        : ORIGIN = 0x20000000, LENGTH = 32K - 256
 RAM_NOINIT (xrw) : ORIGIN = 0x20007F00, LENGTH = 256
-FLASH (rx)       : ORIGIN = 0x8008000, LENGTH = 96K
+FLASH (rx)       : ORIGIN = 0x8008000, LENGTH = 96K - 2K
 }
 
 /* Highest address of the user mode stack */
