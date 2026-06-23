@@ -18,10 +18,11 @@ if not os.path.isfile(file_path):
     print(f"错误：文件 {file_path} 不存在！")
     sys.exit(1)
 
+# 打开串口
 ser = serial.Serial(
     args.port,
     args.baud,
-    timeout=5
+    timeout=5.0
 )
 
 # 新增进度条全局变量
@@ -54,7 +55,7 @@ def show_progress():
     sys.stdout.write(f"\r[传输进度] |{bar}| {pct}% ({disp}/{file_size} bytes)")
     sys.stdout.flush()
 
-def read_from_port(size, timeout=3):
+def read_from_port(size, timeout=5):
     data = ser.read(size)
     if data:
         print(f"\n📥 <<<收[{len(data)}] 字节:")
@@ -63,7 +64,7 @@ def read_from_port(size, timeout=3):
         print(f"\n📥 <<<收: 超时")
     return data or None
 
-def write_to_port(data, timeout=3):
+def write_to_port(data, timeout=5):
     global total_data_bytes
     bytes_written = ser.write(data)
     
@@ -83,6 +84,51 @@ def write_to_port(data, timeout=3):
 
 ser.reset_input_buffer()
 ser.reset_output_buffer()
+
+# ====================== 新增：先检测是否收到字符C ======================
+print("=" * 60)
+print("检测设备是否已进入Ymodem等待(等待字符C)...")
+has_C = False
+# 短暂读取缓冲区，看是否存在 'C'
+recv_buf = ser.read(128)
+if b'C' in recv_buf:
+    has_C = True
+    print("✅ 检测到设备已发送 'C'，直接开始Ymodem传输")
+else:
+    print("❌ 未检测到设备Ymodem标志C，需要发送复位指令")
+    # 等待用户回车发送复位命令
+    input("准备就绪，按回车键进入升级模式...\r\n")
+    reset_cmd = b"BOOTLOADER RESET\r\n"
+    ser.write(reset_cmd)
+    # print(f"\n已发送复位指令: {reset_cmd.decode('utf-8').strip()}")
+
+    # 关键修改：关闭串口，等待5秒后重新打开
+    ser.close()
+    print("串口重启...")
+    time.sleep(3)
+    # 重新打开串口
+    ser = serial.Serial(args.port, args.baud, timeout=5.0)
+    ser.reset_input_buffer()
+    ser.reset_output_buffer()
+    print("串口重新打开完成")
+
+    # 复位后等待设备输出C
+    print("等待设备返回Ymodem起始字符C...")
+    wait_start = time.time()
+    found = False
+    while time.time() - wait_start < 5.0:  # 最多等待3秒
+        chunk = ser.read(64)
+        if b'C' in chunk:
+            found = True
+            break
+    if not found:
+        print("⚠️ 复位后未收到字符C，继续尝试传输，可能失败")
+    else:
+        print("✅ 收到设备 Ymodem 起始字符 C")
+
+print("开始Ymodem文件传输流程...")
+print("=" * 60)
+# ======================================================================
 
 ym = ModemSocket(
     read_from_port, 
