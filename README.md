@@ -12,6 +12,7 @@ GPIO说明：
 遥控器操作说明：
     B(CH10 Index[9])：             打开GPS数据接口
     松开摇杆由系统自动控制，拨动摇杆可接管
+    关于其他通道控制，在/home/nano/ROS/uav_control/src/rc_control节点有说明，通道F(CH6 Index[5])，默认摇杆在中间，上拨会复位单片机；通道H(CH9 Index[8])，默认中间，左会触发FUEL返航，右会触发回到返航点继续探索；通道C(CH11 Index[10])，打开C时发布一次MoveBaseGoal触发FUEL导航。
 
 程序烧录说明：
     基于状态机的软件架构，系统启动LED以500ms闪烁，出现呼吸灯效果说明正在执行bootloader程序，需烧录固件(在Jetson /home/nano/ROS/python目录下运行 python3 send.py G431_MAVLink.bin 或在/home/ggg/CubeMX/STM32G431_MAVLink/build/Release/c_arrays下运行python3 send.py G431_MAVLink.bin)，按照提示完成固件烧录(可在执行APP固件时进行烧录)，烧录后系统自动启动(未自动进入APP可断电重新进入)，若启动失败，检查固件大小和编译的FLASH大小是否一样。
