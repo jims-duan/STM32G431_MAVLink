@@ -1,5 +1,5 @@
 # STM32G431CBT6
-飞控，ROS通信桥梁
+飞控，ROS通信桥梁，使用USB虚拟串口延迟较大(100-200ms)，建议使用USB-UART
 
 GPIO说明：
     LED：                              PC13
@@ -8,6 +8,10 @@ GPIO说明：
     GPS模拟串口(USART1):                PA9(Tx)     PA10(Rx)
     USB虚拟串口：                       PA11(DM)    PA12(DP)
     bootloader：                       PA8，不在APP中，置低复位或上电会触发bootloader代码
+
+遥控器操作说明：
+    B(CH10 Index[9])：             打开GPS数据接口
+    松开摇杆由系统自动控制，拨动摇杆可接管
 
 程序烧录说明：
     基于状态机的软件架构，系统启动LED以500ms闪烁，出现呼吸灯效果说明正在执行bootloader程序，需烧录固件(在Jetson /home/nano/ROS/python目录下运行 python3 send.py G431_MAVLink.bin 或在/home/ggg/CubeMX/STM32G431_MAVLink/build/Release/c_arrays下运行python3 send.py G431_MAVLink.bin)，按照提示完成固件烧录(可在执行APP固件时进行烧录)，烧录后系统自动启动(未自动进入APP可断电重新进入)，若启动失败，检查固件大小和编译的FLASH大小是否一样。
